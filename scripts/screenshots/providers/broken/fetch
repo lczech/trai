@@ -1,0 +1,2 @@
+#!/bin/sh
+echo '{"error": {"kind": "auth", "message": "Not logged in. Run `broken login`."}}'

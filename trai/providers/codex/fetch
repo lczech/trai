@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""trai provider: Codex subscription limits, via the Codex CLI's app-server (account/rateLimits/read)."""
+
+import json
+import os
+import select
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+TIMEOUT = 25
+AUTH_MARKERS = ("authentication required", "refresh", "sign in", "log in", "login", "401", "unauthorized")
+
+
+class Failure(Exception):
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
+def find_codex():
+    found = shutil.which("codex")
+    if found:
+        return found
+    for candidate in (Path.home() / ".local/bin/codex", Path("/usr/local/bin/codex")):
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+class AppServer:
+    """Minimal JSON-RPC client for `codex app-server` over stdio.
+
+    Reads the pipe unbuffered: select() only sees the OS pipe, so lines held
+    in a Python read-ahead buffer would otherwise go unnoticed.
+    """
+
+    def __init__(self, binary):
+        try:
+            self.proc = subprocess.Popen(
+                [binary, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, bufsize=0, cwd=Path.home(),
+            )
+        except OSError as e:
+            raise Failure("unavailable", f"could not start codex app-server: {e}") from None
+        self.deadline = time.monotonic() + TIMEOUT
+        self.next_id = 1
+        self.buffer = b""
+
+    def _readline(self):
+        while b"\n" not in self.buffer:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.proc.stdout], [], [], remaining)[0]:
+                raise Failure("unavailable", f"codex app-server did not answer within {TIMEOUT}s")
+            chunk = os.read(self.proc.stdout.fileno(), 65536)
+            if not chunk:
+                raise Failure("unavailable", "codex app-server closed the connection")
+            self.buffer += chunk
+        line, self.buffer = self.buffer.split(b"\n", 1)
+        return line
+
+    def call(self, method, params=None):
+        request_id = self.next_id
+        self.next_id += 1
+        request = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
+        try:
+            self.proc.stdin.write(json.dumps(request).encode() + b"\n")
+        except OSError:  # e.g. BrokenPipeError when the server exited right away
+            raise Failure("unavailable", "codex app-server exited unexpectedly") from None
+        while True:
+            try:
+                message = json.loads(self._readline())
+            except json.JSONDecodeError:
+                continue
+            if message.get("id") == request_id:
+                return message
+
+    def close(self):
+        self.proc.kill()
+        self.proc.wait()
+
+
+def query(binary):
+    server = AppServer(binary)
+    try:
+        server.call("initialize", {"clientInfo": {"name": "trai", "title": "trai", "version": "1"}})
+        message = server.call("account/rateLimits/read")
+        # Right after startup the server may not have loaded the stored login yet.
+        if "authentication required" in str(message.get("error", "")).lower():
+            time.sleep(0.5)
+            message = server.call("account/rateLimits/read")
+    finally:
+        server.close()
+    if "error" in message:
+        detail = str(message["error"].get("message") or message["error"])
+        kind = "auth" if any(m in detail.lower() for m in AUTH_MARKERS) else "other"
+        if kind == "auth":
+            detail += " Run `codex login`."
+        raise Failure(kind, detail[:300])
+    return message.get("result") or {}
+
+
+def cli_version(binary):
+    """E.g. "0.154.0" from "codex-cli 0.154.0"; None if unavailable."""
+    try:
+        out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return out[-1] if out else None
+
+
+def _iso(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat() if epoch is not None else None
+
+
+def _window(raw, label=None, window_id=None):
+    window = {"used_percent": raw["usedPercent"], "resets_at": _iso(raw.get("resetsAt")),
+              "window_minutes": raw.get("windowDurationMins")}
+    if label:
+        window["label"] = label
+    if window_id:
+        window["id"] = window_id
+    return window
+
+
+def _duration(minutes):
+    if not minutes:
+        return ""
+    return f"{minutes // 1440}d" if minutes % 1440 == 0 else f"{minutes // 60}h" if minutes % 60 == 0 else f"{minutes}m"
+
+
+def parse(result):
+    limits = result.get("rateLimits") or {}
+    out = {"windows": [], "extra": {}}
+    for key, slot in (("primary", "short"), ("secondary", "long")):
+        if isinstance(limits.get(key), dict) and limits[key].get("usedPercent") is not None:
+            out[slot] = _window(limits[key])
+    if "short" not in out and "long" not in out:
+        raise Failure("other", "response contained no usage windows")
+
+    main_id = limits.get("limitId")
+    for limit_id, other in (result.get("rateLimitsByLimitId") or {}).items():
+        if limit_id == main_id or not isinstance(other, dict):
+            continue
+        name = other.get("limitName") or other.get("normalModelSlug") or limit_id
+        for key in ("primary", "secondary"):
+            raw = other.get(key)
+            if isinstance(raw, dict) and raw.get("usedPercent") is not None:
+                label = f"{name} {_duration(raw.get('windowDurationMins'))}".strip()
+                out["windows"].append(_window(raw, label, f"{limit_id}_{key}"))
+
+    if limits.get("planType"):
+        out["extra"]["plan"] = limits["planType"]
+    credits = limits.get("credits")
+    if isinstance(credits, dict):
+        out["extra"]["overage"] = {
+            "enabled": bool(credits.get("hasCredits") or credits.get("unlimited")),
+            "balance": credits.get("balance"),
+        }
+    resets = result.get("rateLimitResetCredits")
+    if isinstance(resets, dict) and resets.get("availableCount") is not None:
+        out["extra"]["reset_credits"] = resets["availableCount"]
+    return out
+
+
+def main():
+    try:
+        binary = find_codex()
+        if not binary:
+            raise Failure("missing", "Codex CLI not found. Install it and run `codex login`.")
+        result = parse(query(binary))
+        version = cli_version(binary)
+        if version:
+            result["extra"]["cli_version"] = version
+    except Failure as e:
+        result = {"error": {"kind": e.kind, "message": str(e)}}
+    json.dump(result, sys.stdout)
+    print()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,38 @@
+.trai-root {
+  spacing: 0;
+}
+
+.trai-pill {
+  spacing: 5px;
+}
+
+.trai-ring {
+  margin-right: 3px;
+}
+
+.trai-value {
+  font-feature-settings: "tnum";
+}
+
+.trai-divider {
+  width: 1px;
+  height: 0.75em;
+  margin: 0 1px;
+}
+
+.trai-menu-row {
+  spacing: 12px;
+}
+
+.trai-menu-label {
+  min-width: 4.5em;
+}
+
+.trai-menu-value {
+  min-width: 6.5em;
+  font-feature-settings: "tnum";
+}
+
+.trai-menu-text {
+  max-width: 24em;
+}

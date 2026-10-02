@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "{\"long\": {\"used_percent\": 40, \"window_minutes\": 1440, \"resets_at\": \"$(date -u -d '+8 hours' +%FT%TZ)\"}}"

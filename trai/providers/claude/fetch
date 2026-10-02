@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""trai provider: Claude subscription limits, via the Claude Code CLI's get_usage control request."""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REQUEST = {"type": "control_request", "request_id": "1", "request": {"subtype": "get_usage"}}
+AUTH_MARKERS = ("log in", "login", "not logged", "unauthorized", "401", "oauth", "authenticat")
+NETWORK_MARKERS = ("network", "econn", "enotfound", "timed out", "timeout", "fetch failed", "503", "502")
+GROUP_MINUTES = {"session": 300, "weekly": 10080}
+# Skip MCP servers, hooks, plugins and session files on every poll.
+QUIET_FLAGS = ["--no-session-persistence", "--strict-mcp-config", "--setting-sources", ""]
+
+
+class Failure(Exception):
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
+def _version(path):
+    match = re.search(r"claude-code-(\d+(?:\.\d+)*)", str(path))
+    return tuple(int(n) for n in match.group(1).split(".")) if match else ()
+
+
+def find_claude():
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = Path.home()
+    for candidate in (home / ".local/bin/claude", home / ".claude/local/claude"):
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+    bundled = [p for p in home.glob(".vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude")
+               if os.access(p, os.X_OK)]
+    if bundled:
+        return str(max(bundled, key=_version))
+    return None
+
+
+def classify(message):
+    lowered = message.lower()
+    if any(m in lowered for m in AUTH_MARKERS):
+        return "auth"
+    if any(m in lowered for m in NETWORK_MARKERS):
+        return "unavailable"
+    return "other"
+
+
+def query(binary, quiet=True):
+    args = [binary, "--print", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json"]
+    try:
+        proc = subprocess.run(
+            args + (QUIET_FLAGS if quiet else []),
+            input=json.dumps(REQUEST) + "\n", capture_output=True, text=True, timeout=25, cwd=Path.home(),
+        )
+    except subprocess.TimeoutExpired:
+        raise Failure("unavailable", "claude did not answer within 25s") from None
+    if quiet and "unknown option" in proc.stderr.lower():  # older CLI without these flags
+        return query(binary, quiet=False)
+    for line in proc.stdout.splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("type") != "control_response":
+            continue
+        response = message.get("response", {})
+        if response.get("subtype") != "success":
+            error = str(response.get("error") or "get_usage rejected")
+            raise Failure(classify(error), error[:300])
+        return response.get("response") or {}
+    detail = (proc.stderr or proc.stdout).strip()[-300:] or f"claude exited with {proc.returncode}"
+    raise Failure(classify(detail), detail)
+
+
+def cli_version(binary):
+    """E.g. "2.1.287" from "2.1.287 (Claude Code)"; None if unavailable."""
+    try:
+        out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return out[0] if out else None
+
+
+def _window(percent, resets_at, minutes, label=None, window_id=None):
+    window = {"used_percent": percent, "resets_at": resets_at, "window_minutes": minutes}
+    if label:
+        window["label"] = label
+    if window_id:
+        window["id"] = window_id
+    return window
+
+
+def _limit_label(limit):
+    name = limit.get("scope") or limit["kind"].replace("weekly_", "").replace("_", " ")
+    suffix = {"session": "5h", "weekly": "7d"}.get(limit.get("group"), "")
+    return f"{name.capitalize()} {suffix}".strip()
+
+
+def _from_limits_list(limits):
+    """Newer CLIs: rate_limits.limits = [{kind, group, percent, resets_at, scope}, ...]."""
+    out = {"windows": []}
+    for limit in limits.get("limits") or []:
+        if not isinstance(limit, dict) or limit.get("percent") is None or not limit.get("kind"):
+            continue
+        if limit["kind"] == "session":
+            out["short"] = _window(limit["percent"], limit.get("resets_at"), 300)
+        elif limit["kind"] == "weekly_all":
+            out["long"] = _window(limit["percent"], limit.get("resets_at"), 10080)
+        else:
+            window_id = limit["kind"] + (f"_{limit['scope']}" if limit.get("scope") else "")
+            out["windows"].append(_window(limit["percent"], limit.get("resets_at"),
+                                          GROUP_MINUTES.get(limit.get("group")), _limit_label(limit), window_id))
+    return out
+
+
+def _from_named_fields(limits):
+    """Older CLIs: rate_limits.five_hour / seven_day / seven_day_<model> = {utilization, resets_at}."""
+    out = {"windows": []}
+    for key, slot, minutes in (("five_hour", "short", 300), ("seven_day", "long", 10080)):
+        window = limits.get(key)
+        if isinstance(window, dict) and window.get("utilization") is not None:
+            out[slot] = _window(window["utilization"], window.get("resets_at"), minutes)
+    for key, window in limits.items():
+        if key.startswith("seven_day_") and isinstance(window, dict) and window.get("utilization") is not None:
+            name = key.removeprefix("seven_day_").replace("_", " ").capitalize()
+            out["windows"].append(_window(window["utilization"], window.get("resets_at"), 10080, f"{name} 7d", key))
+    return out
+
+
+def parse(response):
+    if not response.get("rate_limits_available"):
+        raise Failure("other", "no subscription rate limits (API key auth or third-party provider?)")
+    limits = response.get("rate_limits") or {}
+    # Known response formats, newest first; the first one that yields usage wins.
+    for parser in (_from_limits_list, _from_named_fields):
+        out = parser(limits)
+        if "short" in out or "long" in out:
+            break
+    else:
+        raise Failure("other", "response contained no usage windows (new Claude Code version?)")
+    out["extra"] = {}
+
+    if response.get("subscription_type"):
+        out["extra"]["plan"] = response["subscription_type"]
+    extra_usage = limits.get("extra_usage")
+    if isinstance(extra_usage, dict):
+        out["extra"]["overage"] = {
+            "enabled": bool(extra_usage.get("is_enabled")),
+            "used": extra_usage.get("used_credits"),
+            "limit": extra_usage.get("monthly_limit"),
+            "currency": extra_usage.get("currency"),
+        }
+    return out
+
+
+def main():
+    try:
+        binary = find_claude()
+        if not binary:
+            raise Failure("missing", "Claude Code CLI not found. Install it and run `claude` once to log in.")
+        result = parse(query(binary))
+        version = cli_version(binary)
+        if version:
+            result["extra"]["cli_version"] = version
+    except Failure as e:
+        result = {"error": {"kind": e.kind, "message": str(e)}}
+    json.dump(result, sys.stdout)
+    print()
+
+
+if __name__ == "__main__":
+    main()

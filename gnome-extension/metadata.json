@@ -1,0 +1,8 @@
+{
+  "uuid": "trai@lczech.github.io",
+  "name": "trai",
+  "description": "LLM subscription usage (e.g. Claude, Codex) at a glance. Requires the trai CLI.",
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "settings-schema": "org.gnome.shell.extensions.trai",
+  "url": "https://github.com/lczech/trai"
+}

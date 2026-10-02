@@ -1,0 +1,8 @@
+#!/bin/sh
+at() { date -u -d "$1" +%FT%TZ; }
+cat <<JSON
+{"short": {"used_percent": 81, "window_minutes": 300, "resets_at": "$(at '+4 hours 6 minutes')"},
+ "long": {"used_percent": 93, "window_minutes": 10080, "resets_at": "$(at '+2 days')"},
+ "windows": [{"id": "opus", "label": "Opus 7d", "used_percent": 91, "window_minutes": 10080, "resets_at": "$(at '+2 days')"}],
+ "extra": {"plan": "max"}}
+JSON

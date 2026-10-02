@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trai"
+version = "0.1.0"
+description = "LLM subscription usage at a glance: CLI and GNOME panel indicator"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+
+[project.scripts]
+trai = "trai.cli:run"
+
+[tool.setuptools]
+packages = ["trai"]
+
+[tool.setuptools.package-data]
+trai = ["providers/*/*"]

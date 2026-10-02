@@ -1,0 +1,7 @@
+#!/bin/sh
+cat <<JSON
+{"short": {"used_percent": 42, "resets_at": "2099-01-01T00:00:00+00:00", "window_minutes": 300},
+ "long": {"used_percent": 68, "window_minutes": 10080},
+ "windows": [{"id": "model", "label": "Model 7d", "used_percent": 80}],
+ "extra": {"plan": "test"}}
+JSON

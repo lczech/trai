@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.trai" path="/org/gnome/shell/extensions/trai/">
+    <key name="trai-path" type="s">
+      <default>''</default>
+      <summary>Path to the trai CLI</summary>
+      <description>Empty: ~/.local/bin/trai, then PATH.</description>
+    </key>
+  </schema>
+</schemalist>

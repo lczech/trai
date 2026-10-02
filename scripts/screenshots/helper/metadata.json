@@ -1,0 +1,6 @@
+{
+  "uuid": "trai-screenshots@local",
+  "name": "trai screenshot helper",
+  "description": "Test only, used by scripts/screenshots/run.sh. Never install this.",
+  "shell-version": ["46", "47", "48", "49", "50"]
+}
