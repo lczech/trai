@@ -30,6 +30,14 @@ make install     # CLI to ~/.local/bin/trai, extension to ~/.local/share/gnome-s
 
 The extension appears after your next login; after an update, log out and back in to load the new version. Remove with `make uninstall`.
 
+Sandboxed coding agents can read trai's cache but not refresh it, and the panel stops refreshing while the screen is locked. To keep the data fresh anyway, install a systemd user timer:
+
+```sh
+make install-timer   # ticks every 30 s; e.g. INTERVAL=60 for fewer wakeups
+```
+
+A tick only fetches when the cache is older than `refresh_seconds`; set that to how fresh agents need the data (e.g. 120). See [docs/agents.md](docs/agents.md).
+
 ## Usage
 
 The CLI offers retrieval of usage limits, for instance to give your agents a means of avoiding to stop during a longer task.

@@ -2,10 +2,11 @@
 
 trai shows LLM subscription usage (e.g. 5h and weekly limits) in the GNOME top bar and as a CLI for humans and coding agents.
 
-Two parts:
+Two parts, plus an optional timer:
 
 - **`trai`**: Python CLI (stdlib only, Python ≥ 3.11). Runs providers, caches results, reads the config.
 - **GNOME extension**: draws one pill per provider. Gets everything from `trai status --gui`.
+- **Timer** (`make install-timer`): a systemd user timer that runs `trai status` every `INTERVAL` seconds, so the cache stays fresh for callers that can't refresh (sandboxed agents) while the extension is off (screen locked).
 
 ## Providers
 

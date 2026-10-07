@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh trai's usage cache
+Documentation=https://github.com/lczech/trai
+
+[Service]
+Type=oneshot
+# Fetches only if the cache is older than refresh_seconds; otherwise a no-op.
+ExecStart=@BIN@ status
+StandardOutput=null

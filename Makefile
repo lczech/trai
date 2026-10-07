@@ -3,8 +3,11 @@ LIBDIR := $(PREFIX)/share/trai
 BIN := $(PREFIX)/bin/trai
 UUID := trai@lczech.github.io
 EXTDIR := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
+UNITDIR := $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/systemd/user
+# Seconds between timer ticks; a tick only fetches when the cache is older than refresh_seconds.
+INTERVAL ?= 30
 
-.PHONY: test install install-cli install-extension uninstall dev screenshots
+.PHONY: test install install-cli install-extension install-timer uninstall dev screenshots
 
 # Remove directory $(1) only if it is absolute and ends in $(2), so an empty or
 # odd PREFIX/HOME can never point it elsewhere.
@@ -34,8 +37,21 @@ install-extension:
 	glib-compile-schemas "$(EXTDIR)/schemas"
 	@scripts/enable-extension.sh $(UUID)
 
+install-timer: install-cli
+	@case "$(INTERVAL)" in ''|*[!0-9]*|0) echo "INTERVAL must be a positive number of seconds" >&2; exit 1 ;; esac
+	mkdir -p "$(UNITDIR)"
+	sed 's|@BIN@|$(BIN)|' systemd/trai-refresh.service > "$(UNITDIR)/trai-refresh.service"
+	sed 's|@INTERVAL@|$(INTERVAL)|' systemd/trai-refresh.timer > "$(UNITDIR)/trai-refresh.timer"
+	systemctl --user daemon-reload
+	systemctl --user enable trai-refresh.timer
+	systemctl --user restart trai-refresh.timer
+	@echo "trai-refresh.timer ticks every $(INTERVAL) s"
+
 uninstall:
 	-gnome-extensions disable $(UUID) 2>/dev/null
+	-systemctl --user disable --now trai-refresh.timer 2>/dev/null
+	rm -f -- "$(UNITDIR)/trai-refresh.service" "$(UNITDIR)/trai-refresh.timer"
+	-systemctl --user daemon-reload 2>/dev/null
 	$(call remove_dir,$(LIBDIR),/share/trai)
 	$(call remove_dir,$(EXTDIR),/extensions/$(UUID))
 	rm -f -- "$(BIN)"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh trai's usage cache every @INTERVAL@ s
+Documentation=https://github.com/lczech/trai
+
+[Timer]
+OnActiveSec=1s
+OnUnitActiveSec=@INTERVAL@s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
