@@ -77,24 +77,29 @@ def get(provider, max_age):
 
     Concurrent callers share one refresh: whoever waits on the lock reuses the
     result of the refresh that held it. If the lock stays taken (e.g. a stopped
-    process holds it), the current cache is returned as is.
+    process holds it), the current cache is returned as is. So it is if the cache
+    can't be written (e.g. a sandboxed agent): that caller can only read.
     """
     cutoff = time.time() - max_age
     entry = load(provider.id)
     if (last_attempt(entry) or -1) >= cutoff:
         return entry
-    with _lock(provider.id, provider.timeout + LOCK_GRACE) as locked:
-        entry = load(provider.id)
-        if not locked:
-            message = "another trai process has been refreshing too long"
-            return {**entry, "error": {"kind": "timeout", "message": message, "at": time.time()}}
-        if (last_attempt(entry) or -1) >= cutoff:
-            return entry
-        kind, payload = provider_mod.run(provider)
-        now = time.time()
-        if kind == "data":
-            entry = {"success": {"data": payload, "at": now}, "error": None}
-        else:
-            entry["error"] = {**payload, "at": now}
-        _save(provider.id, entry)
+    try:
+        with _lock(provider.id, provider.timeout + LOCK_GRACE) as locked:
+            entry = load(provider.id)
+            if not locked:
+                message = "another trai process has been refreshing too long"
+                return {**entry, "error": {"kind": "timeout", "message": message, "at": time.time()}}
+            if (last_attempt(entry) or -1) >= cutoff:
+                return entry
+            kind, payload = provider_mod.run(provider)
+            now = time.time()
+            if kind == "data":
+                entry = {"success": {"data": payload, "at": now}, "error": None}
+            else:
+                entry["error"] = {**payload, "at": now}
+            _save(provider.id, entry)
+    except OSError as e:
+        message = f"cannot write the cache: {e.strerror or e}"
+        return {**load(provider.id), "error": {"kind": "cache", "message": message, "at": time.time()}}
     return entry

@@ -220,6 +220,42 @@ class CliTest(unittest.TestCase):
         self.assertEqual(self.run_cli("check", "scripted", "--max-age", "3600")[0], 2)
         self.assertEqual(self.run_cli("check", "scripted", "--max-age", "0")[0], 3)
 
+    def age_cache(self, pid, seconds):
+        path = self.tmp / "cache" / "trai" / f"{pid}.json"
+        entry = json.loads(path.read_text())
+        entry["success"]["at"] -= seconds
+        path.write_text(json.dumps(entry))
+
+    def test_read_only_cache(self):
+        # As for a sandboxed agent: the cache can be read, but not refreshed.
+        self.run_cli("status", "scripted")
+        read_only = mock.patch.object(cache, "_lock", side_effect=OSError(30, "Read-only file system"))
+        with read_only:
+            code, out, _ = self.run_cli("check", "scripted")  # fresh: no refresh needed
+            self.assertEqual((code, out.strip()), (2, "scripted: CRITICAL · 50% · 95%"))
+            self.age_cache("scripted", 300)  # older than refresh_seconds, not yet stale
+            code, out, _ = self.run_cli("check", "scripted")
+            self.assertEqual(code, 2)
+            self.assertIn("(as of 5 min ago; refresh failed (cache): cannot write the cache: Read-only", out)
+            self.age_cache("scripted", 100)  # stale
+            code, out, _ = self.run_cli("check", "scripted")
+            self.assertEqual(code, 3)
+            self.assertTrue(out.startswith("scripted: UNKNOWN · 50% · 95%  (as of 6 min ago;"))
+        self.assertEqual(self.runs(), 1)
+
+    def test_explicit_max_age_shows_age(self):
+        self.run_cli("status", "scripted")
+        self.age_cache("scripted", 3 * 3600)
+        code, out, _ = self.run_cli("check", "scripted", "--max-age", "86400")
+        self.assertEqual((code, out.strip()), (2, "scripted: CRITICAL · 50% · 95%  (as of 3 h ago)"))
+        self.assertEqual(self.runs(), 1)
+
+    def test_internal_error_is_unknown(self):
+        with mock.patch.object(cli, "cmd_check", side_effect=RuntimeError("bug")):
+            code, _, err = self.run_cli("check", "scripted")
+        self.assertEqual(code, 3)
+        self.assertIn("RuntimeError: bug", err)
+
     # --- gui, providers, config ---
 
     def test_gui_reports_config_error(self):

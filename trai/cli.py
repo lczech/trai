@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -22,10 +23,12 @@ Print one line per provider and exit with the most urgent level:
   0 ok        all windows below the warn threshold
   1 warn      a window is at or above warn
   2 critical  a window is at or above critical
-  3 unknown   no usable data (no data yet, or older than --max-age after a failed refresh)
+  3 unknown   no usable data: none yet, an internal error, or a failed refresh with data
+              older than 2 x refresh_seconds (or than --max-age, if given)
   4 usage or config error
 Critical wins over unknown, unknown over warn. Percentages are always "used".
-Windows include per-model limits, not just the 5h/weekly ones."""
+Windows include per-model limits, not just the 5h/weekly ones.
+"(as of …)" marks data older than refresh_seconds."""
 
 
 class UsageError(Exception):
@@ -257,6 +260,11 @@ def cmd_check(args, cfg, now):
         raise UsageError("warn threshold must not exceed critical threshold")
     cfg = {**cfg, "thresholds": thresholds}
     max_age = default_max_age(args, cfg)
+    # Data that could not be refreshed still counts until it is stale, so that a
+    # caller who can't refresh (e.g. a sandboxed agent) gets a level between two
+    # refreshes done by someone else. An explicit max age is taken literally.
+    explicit = args.refresh or args.max_age is not None
+    usable_age = max_age if explicit else 2 * cfg["refresh_seconds"]
 
     reports, problem = gather(cfg, args.ids, max_age, now)
     if problem:
@@ -268,7 +276,8 @@ def cmd_check(args, cfg, now):
     codes = []
     for r in reports:
         fetched = datetime.fromisoformat(r["fetched_at"]).timestamp() if r["fetched_at"] else None
-        too_old = fetched is not None and r["error"] and now - fetched > max_age
+        age = now - fetched if fetched is not None else None
+        too_old = age is not None and r["error"] and age > usable_age
         level = "unknown" if too_old else r["level"]
         codes.append(EXIT_FOR_LEVEL[level])
 
@@ -280,8 +289,8 @@ def cmd_check(args, cfg, now):
             reset = format_reset(w["resets_at"], now)
             parts.append(f"{text} ({reset})" if reset else text)
         notes = []
-        if too_old:
-            notes.append(f"as of {format_age(now - fetched)}")
+        if age is not None and age > cfg["refresh_seconds"]:
+            notes.append(f"as of {format_age(age)}")
         if r["error"]:
             notes.append(f"refresh failed ({r['error']['kind']}): {r['error']['message']}")
         line = " · ".join([f"{r['id']}: {level.upper()}"] + parts)
@@ -356,6 +365,10 @@ def main(argv=None):
     except (UsageError, config.ConfigError) as e:
         print(f"trai: error: {e}", file=sys.stderr)
         return EXIT_USAGE
+    except Exception:  # Python's default exit code 1 would read as "warn"
+        traceback.print_exc()
+        print("trai: internal error", file=sys.stderr)
+        return EXIT_UNKNOWN
 
 
 def run():

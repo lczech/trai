@@ -59,10 +59,11 @@ The provider exits with 0 and prints:
 - `unavailable`: network or server problem.
 - `other`
 
-trai adds two kinds of its own:
+trai adds kinds of its own:
 
 - `timeout`
 - `crash`: non-zero exit, invalid JSON, output that fails validation, or a broken provider directory. The message is the tail of stderr, or the reason.
+- `cache`: the cache can't be written, so this caller can't refresh (see [Cache](#cache)).
 
 trai never retries; the next refresh is the retry.
 
@@ -77,6 +78,7 @@ Refreshes take a per-provider `flock` on `<id>.lock`.
 - `--refresh` is the same as `--max-age 0`.
 - A caller waits for the lock at most the provider's timeout plus 10s. After that it gets the current cache with a `timeout` error, so a stuck process (e.g. a paused terminal) can't freeze everyone.
 - On timeout, the fetch's process group is killed; a child that escaped the group is abandoned after 2s instead of being waited for.
+- If the cache can't be written (e.g. a sandboxed agent with a read-only home), the caller gets the current cache with a `cache` error and fetches nothing. Such callers rely on someone else refreshing: the panel or the timer.
 
 Data is **stale** if the last refresh failed, or if it's older than 2 × `refresh_seconds`.
 
@@ -147,10 +149,18 @@ Its exit code is the most urgent level across the providers (critical before unk
 | 0 | ok |
 | 1 | warn |
 | 2 | critical |
-| 3 | unknown (no data, or data older than `--max-age` after a failed refresh) |
+| 3 | unknown (no data, an internal error, or a failed refresh with data older than the usable age) |
 | 4 | usage or config error |
 
-argparse's default exit code 2 must be overridden, since 2 means critical.
+argparse's default exit code 2 must be overridden, since 2 means critical. Likewise, an internal error exits 3, not Python's default 1, which would read as warn.
+
+After a failed refresh, data counts until it is stale: the **usable age** is 2 × `refresh_seconds`. So a caller that can't refresh itself (e.g. a sandboxed agent) still gets a level between two refreshes by the panel or the timer. With an explicit `--max-age` or `--refresh`, the usable age is that max age.
+
+Data older than `refresh_seconds` gets a note, whatever the reason (failed refresh, large `--max-age`), so a reading never looks fresher than it is:
+
+```
+codex: OK · 5h 32% (resets in 2h 19m) · 7d 5% (resets Wed 10:55)  (as of 3 min ago; refresh failed (cache): …)
+```
 
 **`--json`** returns data only:
 
