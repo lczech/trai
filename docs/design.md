@@ -225,7 +225,7 @@ Each `fetch` separates fetching from a pure `parse(response) -> output` function
   4. the newest `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`
 - Call: `claude --print --verbose --input-format stream-json --output-format stream-json --no-session-persistence --strict-mcp-config --setting-sources ""`. The last three skip session files, MCP servers, hooks and plugins; if the CLI doesn't know them ("unknown option"), it retries without. Stdin is `{"type":"control_request","request_id":"1","request":{"subtype":"get_usage"}}`. Read the `control_response`. No model is called (`total_cost_usd: 0`). Like any Claude Code start, it rewrites `~/.claude.json`.
 - Mapping, newest format first:
-  1. `rate_limits.limits[]`: kind `session` → short, `weekly_all` → long, any other kind → `windows` (id `<kind>_<scope>`, label e.g. "Opus 7d").
+  1. `rate_limits.limits[]`: kind `session` → short, `weekly_all` → long, any other kind → `windows` (id `<kind>_<scope>`, label e.g. "Opus 7d"). `scope` is a string in older CLIs and an object (`{"model": {"display_name": "Fable", …}, "surface": …}`) in newer ones; the scope name joins the display names.
   2. Fallback if that yields neither: `five_hour` → short, `seven_day` → long, non-null `seven_day_*` → `windows`.
   - `subscription_type` → `extra.plan`, `extra_usage` → `extra.overage`.
 - `rate_limits_available: false` → `other` ("no subscription rate limits, API key auth?").

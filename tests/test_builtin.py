@@ -48,6 +48,17 @@ class ClaudeTest(unittest.TestCase):
         self.assertEqual(data["windows"][0]["label"], "Opus 7d")
         self.assertEqual(data["windows"][0]["id"], "weekly_model_opus")
 
+    def test_fixture_max(self):
+        """Max plan: an extra per-model weekly limit whose scope is an object."""
+        kind, data = validate_output(self.fetch.parse(fixture("claude-max")))
+        self.assertEqual(kind, "data")
+        self.assertEqual(data["short"]["label"], "5h")
+        self.assertEqual(data["long"]["label"], "7d")
+        self.assertEqual(len(data["windows"]), 1)
+        self.assertEqual(data["windows"][0]["label"], "Fable 7d")
+        self.assertEqual(data["windows"][0]["id"], "weekly_scoped_fable")
+        self.assertEqual(data["windows"][0]["window_minutes"], 10080)
+
     def test_fallback_without_limits_list(self):
         response = fixture("claude")
         del response["rate_limits"]["limits"]

@@ -97,10 +97,32 @@ def _window(percent, resets_at, minutes, label=None, window_id=None):
     return window
 
 
+def _scope_name(scope):
+    """Scope is a string ("opus") in older CLIs, an object in newer ones:
+    {"model": {"display_name": "Fable", "id": ...}, "surface": ...}. None if it names nothing."""
+    if isinstance(scope, str):
+        return scope or None
+    if not isinstance(scope, dict):
+        return None
+    names = []
+    for part in scope.values():
+        if isinstance(part, dict):
+            part = part.get("display_name") or part.get("id")
+        if isinstance(part, str) and part:
+            names.append(part)
+    return " ".join(names) or None
+
+
+def _limit_id(limit):
+    scope = _scope_name(limit.get("scope"))
+    return limit["kind"] + ("_" + re.sub(r"\W+", "_", scope.lower()) if scope else "")
+
+
 def _limit_label(limit):
-    name = limit.get("scope") or limit["kind"].replace("weekly_", "").replace("_", " ")
+    name = _scope_name(limit.get("scope")) or limit["kind"].replace("weekly_", "").replace("_", " ")
     suffix = {"session": "5h", "weekly": "7d"}.get(limit.get("group"), "")
-    return f"{name.capitalize()} {suffix}".strip()
+    # Upper-case only the first letter, so "Claude Code" stays as is.
+    return f"{name[0].upper()}{name[1:]} {suffix}".strip()
 
 
 def _from_limits_list(limits):
@@ -114,9 +136,8 @@ def _from_limits_list(limits):
         elif limit["kind"] == "weekly_all":
             out["long"] = _window(limit["percent"], limit.get("resets_at"), 10080)
         else:
-            window_id = limit["kind"] + (f"_{limit['scope']}" if limit.get("scope") else "")
             out["windows"].append(_window(limit["percent"], limit.get("resets_at"),
-                                          GROUP_MINUTES.get(limit.get("group")), _limit_label(limit), window_id))
+                                          GROUP_MINUTES.get(limit.get("group")), _limit_label(limit), _limit_id(limit)))
     return out
 
 
