@@ -145,6 +145,8 @@ class TraiPill extends PanelMenu.Button {
 
     _label(text, colorSpec, providerColor, styleClass) {
         const label = new St.Label({text, y_align: Clutter.ActorAlign.CENTER, style_class: styleClass ?? ''});
+        // On a crowded panel, keep the numbers and let other indicators shrink instead.
+        label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         applyColor(label, colorSpec, providerColor);
         return label;
     }
