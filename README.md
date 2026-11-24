@@ -51,12 +51,16 @@ trai config init           # write a config template
 ```
 
 Results are cached during the refresh interval, so repeated calls are instant; `--refresh` forces fresh data.
+Successful fresh readings are also kept as daily JSON Lines files for 30 days by default, under
+`$XDG_STATE_HOME/trai/readings/` (normally `~/.local/state/trai/readings/`).
 
 For coding agents that should stop before running out, see [docs/agents.md](docs/agents.md).
 
 ## Config
 
 `trai config init` writes `~/.config/trai/config.toml` with every option commented out at its default: providers and their order, refresh interval, used vs. remaining, thresholds, colours, ring sizes, panel position. Changes show up on the next refresh.
+
+Set `[history] retention_days` to change how many UTC calendar days of readings are retained. A value of `0` stops recording without deleting existing files.
 
 If the panel can't find a CLI that your terminal finds, add its folder to `path`, e.g. `path = ["~/.local/npm/bin"]`.
 

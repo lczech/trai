@@ -83,8 +83,10 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg, expected)
 
     def test_partial_override(self):
-        cfg = self.load('show = "remaining"\n[display.ring]\nouter_diameter = 30\n[colors]\nclaude = "#123456"\n')
+        cfg = self.load('show = "remaining"\n[history]\nretention_days = 7\n'
+                        '[display.ring]\nouter_diameter = 30\n[colors]\nclaude = "#123456"\n')
         self.assertEqual(cfg["show"], "remaining")
+        self.assertEqual(cfg["history"]["retention_days"], 7)
         self.assertEqual(cfg["display"]["ring"]["outer_diameter"], 30)
         self.assertEqual(cfg["display"]["ring"]["inner_diameter"], 15)
         self.assertEqual(cfg["colors"], {"claude": "#123456"})
@@ -107,6 +109,9 @@ class ConfigTest(unittest.TestCase):
             "nonsense = 1",
             'show = "half"',
             "refresh_seconds = 1",
+            "[history]\nretention_days = -1",
+            "[history]\nretention_days = 1.5",
+            "[history]\nretention_days = true",
             'providers = "claude"',
             'path = "~/bin"',
             'path = [""]',

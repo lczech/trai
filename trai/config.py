@@ -11,6 +11,7 @@ DEFAULTS = {
     "refresh_seconds": 180,
     "path": [],
     "show": "used",
+    "history": {"retention_days": 30},
     "thresholds": {"warn": 75, "critical": 90},
     "display": {
         "show_name": False,
@@ -51,6 +52,9 @@ TEMPLATE = """\
 
 # What rings and numbers show: "used" or "remaining".
 # show = "used"
+
+# [history]
+# retention_days = 30  # UTC calendar days; 0 disables recording without deleting existing files
 
 # [thresholds]  # on used percent, regardless of `show`
 # warn = 75
@@ -124,6 +128,9 @@ def _validate_value(name, value):
                "path must be a list of directories")
     elif name == "show":
         _check(value in ("used", "remaining"), 'show must be "used" or "remaining"')
+    elif name == "history.retention_days":
+        _check(isinstance(value, int) and not isinstance(value, bool) and value >= 0,
+               "history.retention_days must be an integer >= 0")
     elif name.startswith("thresholds."):
         _check(_is_number(value) and 0 <= value <= 100, f"{name} must be a number from 0 to 100")
     elif name.startswith("display.ring."):

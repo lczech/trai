@@ -12,7 +12,7 @@ from unittest import mock
 import fcntl
 import time
 
-from trai import cache, cli, provider
+from trai import cache, cli, history, provider
 
 FAKES = Path(__file__).parent / "providers"
 
@@ -25,6 +25,7 @@ class CliTest(unittest.TestCase):
         env = {
             "XDG_CONFIG_HOME": str(self.tmp / "config"),
             "XDG_CACHE_HOME": str(self.tmp / "cache"),
+            "XDG_STATE_HOME": str(self.tmp / "xdg-state"),
             "TRAI_TEST_DIR": str(self.tmp / "state"),
         }
         patches = [mock.patch.dict(os.environ, env), mock.patch.object(provider, "BUILTIN_DIR", FAKES)]
@@ -54,6 +55,10 @@ class CliTest(unittest.TestCase):
     def runs(self):
         path = self.tmp / "state" / "runs"
         return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def history_records(self):
+        paths = sorted((self.tmp / "xdg-state" / "trai" / "readings").glob("*.jsonl"))
+        return [json.loads(line) for path in paths for line in path.read_text().splitlines()]
 
     # --- data and errors ---
 
@@ -187,6 +192,22 @@ class CliTest(unittest.TestCase):
         self.assertEqual(self.runs(), 1)
         self.run_cli("status", "scripted", "--refresh")
         self.assertEqual(self.runs(), 2)
+        self.assertEqual(len(self.history_records()), 2)
+
+    def test_history_can_be_disabled(self):
+        self.config("[history]\nretention_days = 0")
+        self.run_cli("status", "scripted")
+        self.assertEqual(self.runs(), 1)
+        self.assertFalse(history.history_dir().exists())
+
+    def test_history_failure_does_not_break_refresh(self):
+        failure = PermissionError(13, "Permission denied")
+        with mock.patch.object(history, "_append", side_effect=failure):
+            code, out, err = self.run_cli("status", "--json", "scripted")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["providers"][0]["level"], "critical")
+        self.assertIn("cannot record history", err)
+        self.assertTrue((self.tmp / "cache" / "trai" / "scripted.json").exists())
 
     def test_concurrent_refresh_is_shared(self):
         (self.tmp / "state" / "slow").touch()

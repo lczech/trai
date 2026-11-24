@@ -7,6 +7,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import history
 from . import provider as provider_mod
 
 # Bump when the stored data changes shape; older entries are then refetched.
@@ -72,7 +73,7 @@ def is_failed(entry):
     return bool(error) and (not success or error["at"] >= success["at"])
 
 
-def get(provider, max_age):
+def get(provider, max_age, retention_days=30):
     """Cached entry if a refresh was attempted within max_age seconds, else refresh.
 
     Concurrent callers share one refresh: whoever waits on the lock reuses the
@@ -95,6 +96,7 @@ def get(provider, max_age):
             kind, payload = provider_mod.run(provider)
             now = time.time()
             if kind == "data":
+                history.record(provider.id, payload, now, retention_days, cache_dir())
                 entry = {"success": {"data": payload, "at": now}, "error": None}
             else:
                 entry["error"] = {**payload, "at": now}

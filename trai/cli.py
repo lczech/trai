@@ -132,11 +132,11 @@ def is_missing(entry):
     return cache.is_failed(entry) and entry["error"]["kind"] == "missing"
 
 
-def fetch_all(providers, max_age):
+def fetch_all(providers, max_age, retention_days):
     if not providers:
         return []
     with ThreadPoolExecutor(max_workers=len(providers)) as pool:
-        return list(pool.map(lambda p: cache.get(p, max_age), providers))
+        return list(pool.map(lambda p: cache.get(p, max_age, retention_days), providers))
 
 
 def report(prov, entry, cfg, now):
@@ -173,7 +173,7 @@ def gather(cfg, ids, max_age, now):
     """Return (reports, config_problem) for the selected providers."""
     discovered = provider_mod.discover()
     providers, explicit, unknown = select(cfg, discovered, ids)
-    entries = fetch_all(providers, max_age)
+    entries = fetch_all(providers, max_age, cfg["history"]["retention_days"])
     reports = [report(p, e, cfg, now) for p, e in zip(providers, entries) if explicit or not is_missing(e)]
     problem = f"unknown provider in config: {', '.join(unknown)}" if unknown else None
     return reports, problem

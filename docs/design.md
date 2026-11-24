@@ -83,6 +83,31 @@ Refreshes take a per-provider `flock` on `<id>.lock`.
 
 Data is **stale** if the last refresh failed, or if it's older than 2 × `refresh_seconds`.
 
+## History
+
+Every successful provider fetch appends one compact JSON object to
+`$XDG_STATE_HOME/trai/readings/YYYY-MM-DD.jsonl` (default
+`~/.local/state/trai/readings/`). Cache hits and failed fetches are not recorded.
+The filename and `recorded_at` use UTC, and the timestamp is the same fetch-completion
+time stored in the cache.
+
+Each record contains `schema`, `provider`, `recorded_at`, `short`, `long`, and
+`windows`. It deliberately omits the provider-defined `extra` object. One line is
+one provider reading, so all windows sampled together stay together. Adding fields
+does not change `schema`; removing a field or changing its meaning does.
+
+The daily file is opened with `O_APPEND`, and a complete line is written while an
+exclusive `flock` is held. A directory-level lock coordinates appends with pruning,
+so cleanup cannot remove a file that another process is appending. Files are mode
+0600 and the readings directory is created mode 0700. After each append, trai
+removes strictly named daily files older than the configured number of UTC calendar
+days. It ignores malformed names, directories, symlinks, and future-dated files.
+
+History is supplementary: an append or pruning failure never invalidates a fresh
+cache result. Such failures warn on stderr at most once per rolling 24 hours across
+providers, using a marker under `$XDG_CACHE_HOME/trai/`. If the marker cannot be
+updated, trai warns every time rather than hiding the problem.
+
 ## Config
 
 `$XDG_CONFIG_HOME/trai/config.toml`. trai never writes it automatically. A missing file or key means the default. `trai config init` writes a template with every line commented out.
@@ -94,6 +119,9 @@ providers = ["claude", "codex"]   # enabled + order
 refresh_seconds = 180
 path = []                         # dirs searched for provider CLIs before PATH, ~ expanded
 show = "used"                     # "used" | "remaining"; affects rings and numbers
+
+[history]
+retention_days = 30               # UTC calendar days; 0 disables future recording
 
 [thresholds]                      # on used percent, regardless of `show`
 warn = 75
@@ -242,7 +270,7 @@ Each `fetch` separates fetching from a pure `parse(response) -> output` function
 ## Repo layout
 
 ```
-trai/                 Python package: cli, config, providers, cache, model
+trai/                 Python package: cli, config, providers, cache, history, model
 trai/providers/       claude/, codex/
 gnome-extension/      metadata.json, extension.js, stylesheet.css, schemas/
 tests/                unittest; tests/providers/ (fake: ok, short-only, error-auth, missing, crash, hang, garbage, scripted)
