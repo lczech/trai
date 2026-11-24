@@ -105,6 +105,20 @@ class PlotTest(unittest.TestCase):
         segments = plot._segments(points, self.now - 2000, self.now, 300)
         self.assertEqual([len(segment) for segment in segments], [2, 1, 1])
 
+    def test_unused_rolling_window_remains_one_dashed_segment(self):
+        points = [
+            plot.Point(self.now - 600, 0, "2026-11-24T16:50:00+00:00", "5h"),
+            plot.Point(self.now - 420, 0, "2026-11-24T16:53:00+00:00", "5h"),
+            plot.Point(self.now - 240, 0, "2026-11-24T16:56:00+00:00", "5h"),
+        ]
+        segments = plot._segments(points, self.now - 1000, self.now, 360)
+        path, singletons, _overflow = plot._path_for(
+            segments, self.now - 1000, self.now, "used")
+
+        self.assertEqual([len(segment) for segment in segments], [3])
+        self.assertIn("L", path)
+        self.assertEqual(singletons, [])
+
     def test_downsampling_preserves_extremes(self):
         points = [plot.Point(self.now + index, 50, None, None) for index in range(100)]
         points[25] = plot.Point(self.now + 25, 2, None, None)

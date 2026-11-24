@@ -229,7 +229,11 @@ def _segments(points, start, end, max_gap):
     out, segment = [], [selected[0]]
     for point in selected[1:]:
         previous = segment[-1]
-        reset = (previous.resets_at is not None and point.resets_at is not None
+        # Some providers report a rolling now-plus-window reset while unused.
+        # Its movement is not a reset and must not turn the zero line into dots.
+        unused = previous.used == 0 and point.used == 0
+        reset = (not unused
+                 and previous.resets_at is not None and point.resets_at is not None
                  and abs(_parse_time(previous.resets_at) - _parse_time(point.resets_at))
                  > RESET_JITTER_SECONDS)
         if reset or point.at - previous.at > max_gap:
