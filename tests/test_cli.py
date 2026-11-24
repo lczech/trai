@@ -216,6 +216,10 @@ class CliTest(unittest.TestCase):
     def test_plot_command_generates_dashboard(self):
         self.config('providers = ["scripted"]')
         self.run_cli("status", "scripted")
+        code, out, err = self.run_cli("plot", "scripted")
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(urlsplit(out.strip()).fragment.endswith("-24h"))
+
         code, out, err = self.run_cli("plot", "scripted", "--range", "24h")
         self.assertEqual((code, err), (0, ""))
         uri = urlsplit(out.strip())

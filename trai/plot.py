@@ -20,6 +20,7 @@ from . import cache, history
 from . import provider as provider_mod
 
 RANGES = {"24h": 24 * 60 * 60, "7d": 7 * 24 * 60 * 60, "30d": 30 * 24 * 60 * 60}
+DEFAULT_RANGE = "24h"
 WIDTH, HEIGHT = 1200, 300
 LEFT, RIGHT, TOP, BOTTOM = 64, 24, 20, 42
 PLOT_WIDTH, PLOT_HEIGHT = WIDTH - LEFT - RIGHT, HEIGHT - TOP - BOTTOM
@@ -506,7 +507,7 @@ document.querySelectorAll('nav a').forEach(link => link.addEventListener('click'
 </html>'''
 
 
-def generate(cfg, focus=None, initial_range="7d", now=None):
+def generate(cfg, focus=None, initial_range=DEFAULT_RANGE, now=None):
     """Generate the dashboard and return a browser-compatible file URI."""
     if initial_range not in RANGES:
         raise PlotError(f"unknown range: {initial_range}")

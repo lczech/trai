@@ -89,6 +89,8 @@ class PlotTest(unittest.TestCase):
         cfg["providers"] = ["claude"]
         cfg["show"] = "remaining"
         page = self.page(plot.generate(cfg, now=self.now))
+        self.assertIn('body data-initial-range="24h"', page)
+        self.assertIn('data-range="7d" hidden', page)
         self.assertIn("75% remaining", page)
         self.assertIn("3 unreadable or unsupported history records were ignored", page)
         self.assertNotIn(">partial<", page)

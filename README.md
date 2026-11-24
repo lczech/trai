@@ -55,7 +55,7 @@ Results are cached during the refresh interval, so repeated calls are instant; `
 Successful fresh readings are also kept as daily JSON Lines files for 30 days by default, under
 `$XDG_STATE_HOME/trai/readings/` (normally `~/.local/state/trai/readings/`).
 `trai plot` turns those readings into a self-contained HTML dashboard with 24-hour,
-7-day, and 30-day views. It prints the generated file URI; the GNOME popup's
+7-day, and 30-day views, initially showing the 24-hour view. It prints the generated file URI; the GNOME popup's
 “Usage history…” action opens it directly.
 
 For coding agents that should stop before running out, see [docs/agents.md](docs/agents.md).

@@ -79,8 +79,9 @@ def build_parser():
 
     plot = sub.add_parser("plot", help="generate an HTML usage-history dashboard")
     plot.add_argument("id", nargs="?", help="provider to focus initially")
-    plot.add_argument("--range", choices=plot_mod.RANGES, default="7d", dest="initial_range",
-                      help="initial time range (default: 7d)")
+    plot.add_argument("--range", choices=plot_mod.RANGES, default=plot_mod.DEFAULT_RANGE,
+                      dest="initial_range",
+                      help=f"initial time range (default: {plot_mod.DEFAULT_RANGE})")
     return parser
 
 

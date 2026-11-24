@@ -116,7 +116,7 @@ one self-contained document at `$XDG_DOCUMENTS_DIR/trai-usage-history.html`
 location is readable by strictly confined desktop apps such as Snap browsers. The
 document is mode 0600. The command prints a plain
 `file://` URI; an optional ID adds an anchor to that provider. The default initial
-range is 7d.
+range is 24h.
 
 The page contains inline CSS, JavaScript, and three pre-rendered SVG views, with no
 external resources. The header shows its local generation time, global 24h/7d/30d
