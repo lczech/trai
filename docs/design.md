@@ -108,6 +108,31 @@ cache result. Such failures warn on stderr at most once per rolling 24 hours acr
 providers, using a marker under `$XDG_CACHE_HOME/trai/`. If the marker cannot be
 updated, trai warns every time rather than hiding the problem.
 
+### Plot dashboard
+
+`trai plot [ID] [--range 24h|7d|30d]` reads retained history and atomically replaces
+one self-contained document at `$XDG_DOCUMENTS_DIR/trai-usage-history.html`
+(normally `~/Documents/trai-usage-history.html`). This visible, non-hidden home
+location is readable by strictly confined desktop apps such as Snap browsers. The
+document is mode 0600. The command prints a plain
+`file://` URI; an optional ID adds an anchor to that provider. The default initial
+range is 7d.
+
+The page contains inline CSS, JavaScript, and three pre-rendered SVG views, with no
+external resources. The header shows its local generation time, global 24h/7d/30d
+buttons, and provider links. Providers are vertically stacked facets with aligned,
+continuous time axes: configured providers first in configured order, then
+historical-only providers alphabetically. The current `show` setting controls used
+versus remaining percentages. Provider colors identify facets; short windows are
+dashed, long windows solid, and additional windows use dot/dash variants.
+
+Lines break when reset timestamps materially change (ignoring sub-minute provider
+jitter) or samples are more than 2 × `refresh_seconds` apart. Dense segments retain
+chronological minima and maxima at roughly two points per horizontal pixel. Values
+outside the fixed 0–100% scale are clipped with an edge marker while their actual
+value remains in the legend. Bad lines and unsupported history schemas are skipped
+and reported in the page.
+
 ## Config
 
 `$XDG_CONFIG_HOME/trai/config.toml`. trai never writes it automatically. A missing file or key means the default. `trai config init` writes a template with every line commented out.
@@ -160,6 +185,7 @@ If `providers` is missing: all discovered providers are used in alphabetical ord
 trai status [ID…] [--json | --gui] [--max-age S | --refresh]
 trai check  [ID…] [--warn N] [--critical N] [--max-age S | --refresh]
 trai providers                 # id, source (built-in/user), active, last status
+trai plot [ID] [--range 24h|7d|30d]
 trai config init | path
 ```
 
@@ -238,6 +264,11 @@ It only produces output; it doesn't open anything.
   - `extra.plan` and `extra.cli_version`, if present.
   - "Updated N min ago".
   - "Refresh now", which runs `--gui --refresh`.
+  - "Usage history…", which runs `trai plot [ID]` and opens its URI through GIO.
+- **History plot:** available from every provider menu and the fallback trai menu.
+  Plot generation requests are asynchronous and coalesced. Failures show a normal
+  notification and do not affect refresh. Each provider menu focuses the common
+  dashboard on that provider.
 - **Notifications:** remember the last level of each window in memory. Notify when it rises (to warn if `notify_warn`, to critical if `notify_critical`). The memory is lost when the extension is disabled, which GNOME does on every screen lock, so a window that is still critical notifies again after unlocking. A failing notification is logged and doesn't affect the pills.
 
 ## Built-in providers
@@ -270,7 +301,7 @@ Each `fetch` separates fetching from a pure `parse(response) -> output` function
 ## Repo layout
 
 ```
-trai/                 Python package: cli, config, providers, cache, history, model
+trai/                 Python package: cli, config, providers, cache, history, plot, model
 trai/providers/       claude/, codex/
 gnome-extension/      metadata.json, extension.js, stylesheet.css, schemas/
 tests/                unittest; tests/providers/ (fake: ok, short-only, error-auth, missing, crash, hang, garbage, scripted)

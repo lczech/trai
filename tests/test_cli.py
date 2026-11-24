@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from unittest import mock
 
 import fcntl
@@ -32,6 +33,9 @@ class CliTest(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
+        (self.tmp / "config").mkdir(parents=True)
+        (self.tmp / "config" / "user-dirs.dirs").write_text(
+            f'XDG_DOCUMENTS_DIR="{self.tmp / "Documents"}"\n')
 
     def config(self, text):
         path = self.tmp / "config" / "trai" / "config.toml"
@@ -208,6 +212,19 @@ class CliTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["providers"][0]["level"], "critical")
         self.assertIn("cannot record history", err)
         self.assertTrue((self.tmp / "cache" / "trai" / "scripted.json").exists())
+
+    def test_plot_command_generates_dashboard(self):
+        self.config('providers = ["scripted"]')
+        self.run_cli("status", "scripted")
+        code, out, err = self.run_cli("plot", "scripted", "--range", "24h")
+        self.assertEqual((code, err), (0, ""))
+        uri = urlsplit(out.strip())
+        self.assertTrue(uri.fragment.endswith("-24h"))
+        page = Path(unquote(uri.path))
+        self.assertTrue(page.exists())
+        self.assertIn("trai usage history", page.read_text())
+        self.assertEqual(self.run_cli("plot", "nope")[0], 4)
+        self.assertEqual(self.run_cli("plot", "--range", "1h")[0], 4)
 
     def test_concurrent_refresh_is_shared(self):
         (self.tmp / "state" / "slow").touch()

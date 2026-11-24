@@ -251,6 +251,7 @@ class TraiPill extends PanelMenu.Button {
         }
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addAction('Refresh now', () => this._ext.refresh(true));
+        this.menu.addAction('Usage history…', () => this._ext.openHistory(this._provider?.id ?? null));
     }
 
     _addText(text, dim = false) {
@@ -277,6 +278,8 @@ export default class TraiExtension extends Extension {
         this._lastGui = null;
         this._running = false;
         this._pending = false;
+        this._plotting = false;
+        this._pendingPlot = undefined;
         this._refreshSeconds = DEFAULT_REFRESH;
         this.refresh(false);
     }
@@ -291,6 +294,7 @@ export default class TraiExtension extends Extension {
         this._source?.destroy();
         this._settings = this._cancellable = this._pills = this._levels = null;
         this._root = this._rootBox = this._source = this._placement = this._lastGui = null;
+        this._pendingPlot = undefined;
         this._timer = this._watchdog = 0;
     }
 
@@ -362,6 +366,57 @@ export default class TraiExtension extends Extension {
                 this.refresh(true);
             } else {
                 this._schedule();
+            }
+        });
+    }
+
+    openHistory(providerId) {
+        if (this._plotting) {
+            this._pendingPlot = providerId;
+            return;
+        }
+        const trai = this._traiPath();
+        if (!trai) {
+            this._sendNotification('Could not open usage history', 'trai CLI not found.', false);
+            return;
+        }
+        const argv = [trai, 'plot', ...providerId ? [providerId] : []];
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+        } catch (e) {
+            this._sendNotification('Could not open usage history', e.message, false);
+            return;
+        }
+        this._plotting = true;
+        const cancellable = this._cancellable;
+        proc.communicate_utf8_async(null, cancellable, (_proc, result) => {
+            if (cancellable.is_cancelled())
+                return;
+            try {
+                const [, stdout, stderr] = proc.communicate_utf8_finish(result);
+                if (!proc.get_successful())
+                    throw new Error(stderr.trim() || `trai exited with ${proc.get_exit_status()}`);
+                const uri = stdout.trim();
+                if (!uri.startsWith('file://'))
+                    throw new Error('trai returned an invalid plot URI');
+                Gio.AppInfo.launch_default_for_uri_async(uri, null, cancellable, (_source, launchResult) => {
+                    if (cancellable.is_cancelled())
+                        return;
+                    try {
+                        Gio.AppInfo.launch_default_for_uri_finish(launchResult);
+                    } catch (e) {
+                        this._sendNotification('Could not open usage history', e.message, false);
+                    }
+                });
+            } catch (e) {
+                this._sendNotification('Could not open usage history', e.message, false);
+            }
+            this._plotting = false;
+            if (this._pendingPlot !== undefined) {
+                const pending = this._pendingPlot;
+                this._pendingPlot = undefined;
+                this.openHistory(pending);
             }
         });
     }

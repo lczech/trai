@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from . import __version__, cache, config
+from . import plot as plot_mod
 from . import provider as provider_mod
 from .model import all_windows, level_of, worst
 
@@ -75,6 +76,11 @@ def build_parser():
     init = cfg_sub.add_parser("init", help="write a commented config template")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
     cfg_sub.add_parser("path", help="print the config file path")
+
+    plot = sub.add_parser("plot", help="generate an HTML usage-history dashboard")
+    plot.add_argument("id", nargs="?", help="provider to focus initially")
+    plot.add_argument("--range", choices=plot_mod.RANGES, default="7d", dest="initial_range",
+                      help="initial time range (default: 7d)")
     return parser
 
 
@@ -337,6 +343,15 @@ def cmd_config(args):
     return EXIT_OK
 
 
+def cmd_plot(args, cfg, now):
+    try:
+        uri = plot_mod.generate(cfg, args.id, args.initial_range, now)
+    except plot_mod.PlotError as error:
+        raise UsageError(str(error)) from None
+    print(uri)
+    return EXIT_OK
+
+
 def apply_path(cfg):
     """Prepend the configured directories to PATH, which providers inherit."""
     if cfg["path"]:
@@ -357,6 +372,8 @@ def main(argv=None):
                 raise
             cfg, config_error = e.partial, str(e)
         apply_path(cfg)
+        if args.command == "plot":
+            return cmd_plot(args, cfg, now)
         if args.command == "status":
             return cmd_gui(args, cfg, config_error, now) if args.gui else cmd_status(args, cfg, now)
         if args.command == "check":
